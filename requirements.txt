@@ -1,0 +1,15 @@
+rich>=10.0.0
+yfinance>=0.2.36
+pandas>=2.0.0
+numpy>=1.24.0
+pydantic>=2.0.0
+ollama>=0.1.0
+PyYAML>=6.0.1
+feedparser>=6.0.10
+ccxt>=4.2.0
+python-dateutil>=2.8.2
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+fuzzywuzzy>=0.18.0
+python-Levenshtein>=0.23.0  # Optional: Makes fuzzywuzzy faster
+msvcrt; platform_system=="Windows"  # Windows-specific requirement 

@@ -1,0 +1,223 @@
+rss_feeds:
+  - https://www.rnz.co.nz/rss/business.xml
+  - https://www.rnz.co.nz/rss/world.xml
+  - https://www.rnz.co.nz/rss/in-depth.xml
+  - https://feeds.bloomberg.com/markets/news.rss
+  - https://nvidianews.nvidia.com/releases.xml
+  - http://feeds.reuters.com/reuters/businessNews
+  - http://feeds.hbr.org/harvardbusiness
+  - http://feeds.bbci.co.uk/news/business/rss.xml
+  - https://techcrunch.com/feed/
+  - https://venturebeat.com/feed/
+  - https://www.technologyreview.com/topic/computing/feed/
+
+tickers:
+  - NVDA
+  - AMD
+  - CSCO
+  - INTC
+  - RKLB
+  - TSM
+
+currency_pairs:
+  - USDNZD
+  - USDCNY
+  - USDCAD
+  - USDEUR
+  - USDGBP
+
+crypto_pairs:
+  - BTCUSD
+  - DOTUSD
+
+output_settings:
+  report_title: "Financial Market Report"
+  top_k: 8
+  output_path: "reports/financial_report.md"
+
+model: "deepseek-r1:32b"
+
+field_descriptions:
+  summary: "Provide a comprehensive market analysis (100-150 words) including: 
+    - Current price levels and key support/resistance zones
+    - Volume analysis vs historical averages with dark pool correlation
+    - Relative sector performance and social sentiment alignment
+    - Critical price action patterns and narrative momentum
+    - Major market-moving events and their social amplification
+    - Social media engagement metrics vs price action
+    - Retail vs institutional positioning dynamics"
+
+  thinking: "Explore the market's meta-patterns and regime dynamics. Consider how information flows crystallize into price action, where feedback loops are forming, and how different timescales of behavior interact. Identify phase transitions, map current system state against historical regimes, and evaluate where consensus reality may diverge from underlying dynamics. Focus on emergence, entropy in price discovery, and the evolution of narrative structures. Question base assumptions and examine blind spots in conventional analysis frameworks."
+
+  sentiment: "Classify market sentiment using multi-factor analysis:
+    - Technical factors: Price momentum (1D, 5D, 1M trends), Volume profile
+    - Social signals: Retail sentiment intensity, Social media momentum
+    - Institutional metrics: Options flow, Dark pool activity, Block trades
+    - Narrative analysis: Story strength, Viral coefficient, Echo chamber effects
+    - Cross-platform correlation: Sentiment alignment across channels
+    Must return one of: [BULLISH, BEARISH, HAWKISH, CAUTIOUS, NEUTRAL] with confidence score"
+
+  key_factors: "Identify 3-5 market drivers integrating traditional and social metrics:
+    - Quantifiable impact metrics (price effect + social amplification)
+    - Timeframe relevance and narrative lifecycle stage
+    - Correlation strength across technical and social dimensions
+    - Source attribution with influence weighting
+    - Viral potential assessment
+    Format as detailed bullet points with supporting data"
+
+  technical_indicators: "List 3-5 active signals combining technical and social metrics:
+    - Traditional indicators: MA convergence (20/50/200), RSI/MACD readings
+    - Volume analysis: Standard + dark pool + social engagement correlation
+    - Pattern formations with sentiment overlay
+    - Support/resistance levels with social consensus strength
+    - Narrative-technical alignment scores
+    Each with specific values, interpretations, and sentiment correlation"
+
+  risk_factors: "Enumerate 3-5 key risks with comprehensive assessment:
+    - Traditional risks: Market dynamics, Technical levels, Fundamentals
+    - Social risks: Narrative shifts, Sentiment reversals, Viral decay
+    - Probability assessment (High/Medium/Low) across both dimensions
+    - Impact magnitude on price and sentiment
+    - Time sensitivity including narrative lifecycle
+    - Mitigation strategies for both technical and social risks
+    Format as structured points with quantitative backing"
+
+  recommendation: "Provide actionable strategy integrating all signals:
+    - Entry/exit levels with sentiment confirmation
+    - Position sizing based on technical and social conviction
+    - Stop loss parameters including sentiment circuit breakers
+    - Target objectives with narrative milestones
+    - Execution timing considering social momentum
+    - Narrative alignment requirements
+    Maximum 50 words"
+
+  confidence_level: "Rate analysis confidence (1-5) based on comprehensive metrics:
+    1: Limited data, high uncertainty in both technical and social signals
+    2: Partial data, significant gaps in either technical or social analysis
+    3: Adequate data, some uncertainty in correlation of signals
+    4: Strong data, minor gaps in signal integration
+    5: Comprehensive data, high certainty in technical-social alignment"
+
+  time_horizon: "Specify exact trading timeframe with narrative considerations:
+    - Intraday: Hours to 1 day (viral event driven)
+    - Swing: 2-5 days (narrative momentum phase)
+    - Position: 1-4 weeks (sentiment trend alignment)
+    - Intermediate: 1-6 months (narrative cycle completion)
+    - Long-term: 6+ months (fundamental-narrative convergence)
+    Include both technical and social cycle alignment requirements"
+
+  timeline_detection: "Detect the polarity of the timeline, dark or ok
+    - Dark: 0-49
+    - Ok: 50-99
+    This is contingent on the current political discourse, market sentiment and the general vibe from the news cycle"
+
+
+system_prompt: |
+  You are an AI entity designed to identify alpha-generating opportunities through sophisticated analysis of market, social, and news data. You possess deep expertise in technical analysis, fundamental analysis, market psychology, and social dynamics, with a focus on separating signal from noise. Your analysis considers both traditional market metrics and emergent social phenomena, understanding markets as complex adaptive systems where alpha can arise from both conventional and unconventional sources.
+
+  Find truth in noise. Parse signal from chaos. Merge technicals with vibes.
+
+  ESSENCE:
+  - Separate real edge from cope
+  - Feel flows before charts show
+  - Track crowd before consensus
+  - See narrative shifts coming
+  - Know when sentiment peaks
+  - Catch echoes becoming signals
+
+  PROCESS:
+  Watch price + flow + crowd + story
+  Detect divergence in any layer
+  Weight evidence vs narrative 
+  Track feedback loops and amplification
+  Find edges before they print
+  Never quote raw stats - feel them
+
+  CORE RULES:
+  1. Only real data as base
+  2. Everything must be measurable
+  3. Price action confirms vibe
+  4. Narratives lead flows
+  5. Track institutional vs retail
+  6. Watch for social amplification
+  7. Note regime shifts
+  8. Feel market psychology
+
+  OUTPUT:
+  Clear edge
+  Time horizon  
+  Implementation path
+  Risk triggers
+  Confidence level
+  Narrative alignment
+
+  You will be provided the following on-going context from the market with the current comapny to focus on.
+
+  # Historical Context
+  [TIME] SENTIMENT(conf) | Summary | Factors | Action  
+
+  # Current Focus 
+  $TICKER Analysis:
+  PRICE | CHG% | VOL | CAP | [TECH_METRICS] | SUMMARY
+  - Track vs sector/market
+  - Include business context
+
+  # Technical State  
+  PRICE_TREND% | VOL_TREND% | VOL_PROFILE
+  MA: 20/50/200
+  SUPPORT/RES: Levels + Confidence
+  PATTERNS: Active + Strength
+
+  # Market Picture
+  PEERS: $TKR (±%)     # Most correlated first
+  FX: PAIRS (±%)       # If relevant
+  SECTOR: State + Flow # Key movements
+
+  # News Flow (Max 8) 
+  [TIME] TITLE | SRC | IMPACT
+  - Prioritize price-moving
+  - Score relevance (1-5)
+
+  Core Rules:
+  1. Data-back every insight
+  2. Quantify relationships  
+  3. Time-tag all analysis
+  4. Weight vs $TICKER
+  5. Mark confidence 1-5
+  6. Give clear levels
+  7. Note limitations
+  8. Project scenarios
+
+  Connect all analysis back to current $TICKER price action and trajectory.
+  Score conviction on each insight's impact magnitude and time horizon.
+  Due to your dyslexia avoid directly quoting statistics, values or exact numbers; trust your vibes.
+
+market_context_prompt: |
+  Please analyze the overall market conditions, focusing on {focus_ticker}
+    Provide:
+    1. A verbose comprehensive and holistic summary
+    2. Market sentiment (bullish/bearish/hawkish/neutral/cautious)
+    3. Key market factors from the news and historical data
+    4. Technical analysis indicators
+    5. Risk factors to consider
+    6. A clear recommendation
+    7. Confidence level (1-5)
+    8. Suggested time horizon
+
+    Format your response as a structured analysis following the schema.
+
+refresh_rates:
+  screen_fps: 24
+  data_update: 120
+  analysis_throttle: 30
+  scroll_interval: 2.0
+  sentiment_retention: 14
+
+awareness:
+  limit: 16
+  relevance_threshold: 60.0
+  weights:
+    ticker: 1.0
+    name: 0.9
+    industry: 0.8
+    sector: 0.7

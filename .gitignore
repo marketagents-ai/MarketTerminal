@@ -169,3 +169,31 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# frase's ignores
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+env/
+venv/
+.env*
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs and databases
+*.log
+*.jsonl
+*.sqlite
+*.db
+*.pkl
+
+# Project specific
+archive/
+scratch/
