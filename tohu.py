@@ -195,6 +195,208 @@ class SECFiling:
         self.transactions = filing_data.get('transactions', [])
         self.footnotes = filing_data.get('footnotes', {})
 
+class EarningsReports:
+    """Handles earnings reports data for stocks."""
+    
+    def __init__(self, tickers: List[str]):
+        self.tickers = tickers
+        self.earnings_cache = {}
+    
+    def fetch_earnings(self, ticker: str, freq: str = 'yearly', as_dict: bool = False) -> Union[pd.DataFrame, Dict, None]:
+        """Fetch earnings data for a specific ticker using income statement.
+        
+        Args:
+            ticker: Stock ticker symbol
+            freq: Frequency of earnings data ('yearly' or 'quarterly')
+            as_dict: Whether to return data as dictionary
+            
+        Returns:
+            Earnings data as DataFrame, Dict, or None if not available
+        """
+        cache_key = f"{ticker}_{freq}"
+        if cache_key in self.earnings_cache:
+            return self.earnings_cache[cache_key]
+            
+        try:
+            stock = yf.Ticker(ticker)
+            
+            # Use income statement instead of deprecated earnings method
+            if freq == 'yearly':
+                income_data = stock.income_stmt
+            else:
+                income_data = stock.quarterly_income_stmt
+                
+            if income_data is None or income_data.empty:
+                return None
+                
+            # Extract relevant data for earnings report
+            earnings_data = pd.DataFrame()
+            
+            if 'TotalRevenue' in income_data.index:
+                earnings_data['Revenue'] = income_data.loc['TotalRevenue']
+            elif 'Total Revenue' in income_data.index:
+                earnings_data['Revenue'] = income_data.loc['Total Revenue']
+                
+            if 'NetIncome' in income_data.index:
+                earnings_data['Earnings'] = income_data.loc['NetIncome']
+            elif 'Net Income' in income_data.index:
+                earnings_data['Earnings'] = income_data.loc['Net Income']
+                
+            # Cache the results
+            self.earnings_cache[cache_key] = earnings_data if not as_dict else earnings_data.to_dict()
+            
+            return self.earnings_cache[cache_key]
+        except Exception as e:
+            print(f"Error fetching earnings for {ticker}: {str(e)}")
+            return None
+    
+    def get_all_earnings(self, freq: str = 'yearly') -> Dict[str, pd.DataFrame]:
+        """Fetch earnings data for all tracked tickers.
+        
+        Args:
+            freq: Frequency of earnings data ('yearly' or 'quarterly')
+            
+        Returns:
+            Dictionary mapping ticker symbols to earnings DataFrames
+        """
+        results = {}
+        for ticker in self.tickers:
+            earnings = self.fetch_earnings(ticker, freq)
+            if earnings is not None and not (isinstance(earnings, pd.DataFrame) and earnings.empty):
+                results[ticker] = earnings
+        return results
+    
+    def format_earnings_markdown(self, ticker: str, freq: str = 'yearly') -> str:
+        """Format earnings data as markdown table.
+        
+        Args:
+            ticker: Stock ticker symbol
+            freq: Frequency of earnings data ('yearly' or 'quarterly')
+            
+        Returns:
+            Markdown formatted table of earnings data
+        """
+        earnings = self.fetch_earnings(ticker, freq)
+        if earnings is None or (isinstance(earnings, pd.DataFrame) and earnings.empty):
+            return f"No earnings data available for {ticker}"
+        
+        # Format as markdown table
+        md = f"### {ticker} Earnings ({freq})\n\n"
+        md += "| Year | Revenue | Earnings |\n"
+        md += "|------|---------|----------|\n"
+        
+        # Ensure numeric types
+        if 'Revenue' in earnings.columns:
+            earnings['Revenue'] = pd.to_numeric(earnings['Revenue'], errors='coerce')
+        if 'Earnings' in earnings.columns:
+            earnings['Earnings'] = pd.to_numeric(earnings['Earnings'], errors='coerce')
+        
+        for index, row in earnings.iterrows():
+            period = str(index.year) if hasattr(index, 'year') else str(index)
+            
+            # Handle revenue formatting with proper error checking
+            if 'Revenue' in earnings and pd.notna(row.get('Revenue')):
+                revenue_val = row.get('Revenue')
+                if abs(revenue_val) >= 1e9:
+                    revenue = f"${revenue_val/1e9:.2f}B"
+                else:
+                    revenue = f"${revenue_val/1e6:.2f}M"
+            else:
+                revenue = 'N/A'
+                
+            # Handle earnings formatting with proper error checking
+            if 'Earnings' in earnings and pd.notna(row.get('Earnings')):
+                earnings_val = row.get('Earnings')
+                if abs(earnings_val) >= 1e9:
+                    earnings_str = f"${earnings_val/1e9:.2f}B"
+                else:
+                    earnings_str = f"${earnings_val/1e6:.2f}M"
+            else:
+                earnings_str = 'N/A'
+                
+            md += f"| {period} | {revenue} | {earnings_str} |\n"
+        
+        return md
+    
+    def get_earnings_trend(self, ticker: str, freq: str = 'yearly') -> Dict:
+        """Calculate earnings growth trends.
+        
+        Args:
+            ticker: Stock ticker symbol
+            freq: Frequency of earnings data ('yearly' or 'quarterly')
+            
+        Returns:
+            Dictionary with revenue and earnings growth metrics
+        """
+        earnings = self.fetch_earnings(ticker, freq)
+        if earnings is None or (isinstance(earnings, pd.DataFrame) and (earnings.empty or len(earnings) < 2)):
+            return {
+                'revenue_growth': None, 
+                'earnings_growth': None,
+                'latest_period': {
+                    'year': None,
+                    'revenue': None,
+                    'earnings': None,
+                    'revenue_growth': None,
+                    'earnings_growth': None
+                }
+            }
+        
+        try:
+            # Calculate year-over-year growth rates
+            if 'Revenue' in earnings.columns:
+                # Convert to numeric type first to avoid warnings
+                earnings['Revenue'] = pd.to_numeric(earnings['Revenue'], errors='coerce')
+                # Use fill_method=None to avoid FutureWarning
+                revenue_growth = earnings['Revenue'].pct_change(fill_method=None) * 100
+                # Use dropna to handle NaN values properly
+                avg_revenue_growth = revenue_growth.dropna().mean()
+            else:
+                revenue_growth = pd.Series()
+                avg_revenue_growth = None
+                
+            if 'Earnings' in earnings.columns:
+                # Convert to numeric type first to avoid warnings
+                earnings['Earnings'] = pd.to_numeric(earnings['Earnings'], errors='coerce')
+                # Use fill_method=None to avoid FutureWarning
+                earnings_growth = earnings['Earnings'].pct_change(fill_method=None) * 100
+                # Use dropna to handle NaN values properly
+                avg_earnings_growth = earnings_growth.dropna().mean()
+            else:
+                earnings_growth = pd.Series()
+                avg_earnings_growth = None
+            
+            latest_year = str(earnings.index[0].year) if hasattr(earnings.index[0], 'year') else str(earnings.index[0])
+            
+            # Get the first non-NaN value for growth rates
+            first_valid_revenue_growth = None if revenue_growth.empty else revenue_growth.dropna().iloc[0] if not revenue_growth.dropna().empty else None
+            first_valid_earnings_growth = None if earnings_growth.empty else earnings_growth.dropna().iloc[0] if not earnings_growth.dropna().empty else None
+            
+            return {
+                'revenue_growth': avg_revenue_growth,
+                'earnings_growth': avg_earnings_growth,
+                'latest_period': {
+                    'year': latest_year,
+                    'revenue': float(earnings['Revenue'].iloc[0]) if 'Revenue' in earnings.columns else None,
+                    'earnings': float(earnings['Earnings'].iloc[0]) if 'Earnings' in earnings.columns else None,
+                    'revenue_growth': float(first_valid_revenue_growth) if first_valid_revenue_growth is not None else None,
+                    'earnings_growth': float(first_valid_earnings_growth) if first_valid_earnings_growth is not None else None
+                }
+            }
+        except Exception as e:
+            print(f"Error calculating earnings trends for {ticker}: {str(e)}")
+            return {
+                'revenue_growth': None, 
+                'earnings_growth': None,
+                'latest_period': {
+                    'year': None,
+                    'revenue': None,
+                    'earnings': None,
+                    'revenue_growth': None,
+                    'earnings_growth': None
+                }
+            }
+
 class FinancialSigns:
     def __init__(self, config_path: str):
         self.config = self._load_config(config_path)
@@ -202,6 +404,7 @@ class FinancialSigns:
         self.tickers = self.config['tickers']
         self.currency_pairs = self.config.get('currency_pairs', [])
         self.crypto = CryptoSigns(self.config) if 'crypto_pairs' in self.config else None
+        self.earnings = EarningsReports(self.tickers)
         self.news_cache = {}
         self.stock_cache = {}
 
@@ -338,6 +541,37 @@ class FinancialSigns:
             md_content += f"- Change: ${data['change']:.2f}\n"
             md_content += f"- Volume: {data['volume']:,}\n"
             md_content += f"- Market Cap: {data['market_cap']:,}\n\n"
+            
+            # Add earnings data if available
+            try:
+                earnings_trend = self.earnings.get_earnings_trend(ticker)
+                if earnings_trend['latest_period']['revenue'] is not None:
+                    revenue_val = earnings_trend['latest_period']['revenue']
+                    if abs(revenue_val) >= 1e9:
+                        md_content += f"- Latest Revenue: ${revenue_val/1e9:.2f}B"
+                    else:
+                        md_content += f"- Latest Revenue: ${revenue_val/1e6:.2f}M"
+                        
+                    if earnings_trend['latest_period']['revenue_growth'] is not None:
+                        md_content += f" ({earnings_trend['latest_period']['revenue_growth']:.1f}% YoY)\n"
+                    else:
+                        md_content += "\n"
+                        
+                if earnings_trend['latest_period']['earnings'] is not None:
+                    earnings_val = earnings_trend['latest_period']['earnings']
+                    if abs(earnings_val) >= 1e9:
+                        md_content += f"- Latest Earnings: ${earnings_val/1e9:.2f}B"
+                    else:
+                        md_content += f"- Latest Earnings: ${earnings_val/1e6:.2f}M"
+                        
+                    if earnings_trend['latest_period']['earnings_growth'] is not None:
+                        md_content += f" ({earnings_trend['latest_period']['earnings_growth']:.1f}% YoY)\n"
+                    else:
+                        md_content += "\n"
+            except Exception as e:
+                print(f"Error adding earnings data for {ticker}: {str(e)}")
+            
+            md_content += "\n"
         
         # Add currency rates section
         if self.currency_pairs:
@@ -842,6 +1076,23 @@ class FinancialSigns:
         if format == 'json':
             currency_data = self.fetch_currency_rates() if self.currency_pairs else {}
             crypto_data = self.crypto.fetch_crypto_data() if self.crypto else {}
+            
+            # Get earnings data for all tickers
+            earnings_data = {}
+            for ticker in self.tickers:
+                try:
+                    yearly = self.earnings.fetch_earnings(ticker, freq='yearly', as_dict=True)
+                    quarterly = self.earnings.fetch_earnings(ticker, freq='quarterly', as_dict=True)
+                    trend = self.earnings.get_earnings_trend(ticker)
+                    
+                    earnings_data[ticker] = {
+                        'yearly': yearly,
+                        'quarterly': quarterly,
+                        'trend': trend
+                    }
+                except Exception as e:
+                    print(f"Error getting earnings data for {ticker}: {str(e)}")
+            
             result = {
                 'generated_at': datetime.now().isoformat(),
                 'stocks': {k: {
@@ -856,6 +1107,7 @@ class FinancialSigns:
                         'change_pct': float(v['change'] / (v['price'] - v['change']) * 100)
                     }
                 } for k, v in stock_data.items()},
+                'earnings': earnings_data,
                 'currencies': currency_data,
                 'crypto': crypto_data,
                 'news': news_items[:top_k]
@@ -871,6 +1123,15 @@ class FinancialSigns:
                     md_content += history['chart']
                     md_content += "\n```\n"
                     md_content += f"Change: ${history['change']:.2f} ({history['change_pct']:.1f}%)\n\n"
+            
+            # Add earnings reports section
+            md_content += "\n## Earnings Reports\n\n"
+            for ticker in self.tickers:
+                yearly_earnings = self.earnings.format_earnings_markdown(ticker, 'yearly')
+                quarterly_earnings = self.earnings.format_earnings_markdown(ticker, 'quarterly')
+                
+                md_content += yearly_earnings + "\n\n"
+                md_content += quarterly_earnings + "\n\n"
             
             for ticker in self.tickers:
                 md_content += f"\n### Technical Analysis for {ticker}\n\n"

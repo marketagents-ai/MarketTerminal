@@ -33,6 +33,40 @@ from fuzzywuzzy import fuzz
 import math
 from pathlib import Path
 
+def load_config():
+    """Load config from config.yaml"""
+    with open('config.yaml', 'r') as f:
+        config = yaml.safe_load(f)
+    return (
+        config['system_prompt'],  
+        config['market_context_prompt'],  
+        config['model'],
+        config['field_descriptions']
+    )
+
+# Load config at module level
+SYSTEM_PROMPT, MARKET_CONTEXT_PROMPT, MODEL_NAME, FIELD_DESCRIPTIONS = load_config()
+
+class AwarenessConfig(BaseModel):
+    """Configuration for news awareness filtering"""
+    limit: int = Field(default=8, description="Number of news items to include")
+    relevance_threshold: float = Field(default=60.0, description="Minimum relevance score")
+    weights: Dict[str, float] = Field(
+        default={
+            "ticker": 1.0,
+            "name": 0.9,
+            "industry": 0.8,
+            "sector": 0.7
+        }
+    )
+
+class RefreshConfig(BaseModel):
+    """Configuration for all refresh rates and timing intervals"""
+    screen_fps: int = Field(default=4, ge=1, le=60, description="Screen refreshes per second")
+    data_update: int = Field(default=60, ge=10, description="Seconds between market data updates")
+    analysis_throttle: int = Field(default=60, ge=10, description="Minimum seconds between AI analysis")
+    scroll_interval: float = Field(default=1.0, ge=0.1, description="Seconds between auto-scrolls")
+    sentiment_retention: int = Field(default=7, ge=1, description="Days to keep sentiment history")
 
 class MarketSentiment(str, Enum):
     """Market sentiment classifications"""
@@ -53,6 +87,8 @@ class LoadingState(str, Enum):
     READY = "ready"
     LOADING = "loading"
     ERROR = "error"
+
+# GUI visual components
 
 class ASCIIAnimation:
     """Handles loading and display of ASCII art animations with proper centering"""
@@ -88,7 +124,7 @@ class ASCIIAnimation:
                 self.frames = raw_frames
                 
         except Exception:
-            # Fallback spinner with fixed dimensions
+            # Fallback spinner
             self.frames = [
                 "⠋", "⠙", "⠹",
                 "⠸", "⠼", "⠴",
@@ -160,6 +196,8 @@ class TrendArrows:
         if change_pct < -2: return cls.DOWN
         if change_pct < 0: return cls.SLIGHT_DOWN
         return cls.NEUTRAL
+
+# Analysis logic and components
 
 class SentimentTracker:
     """Tracks weighted rolling sentiment averages with persistence"""
@@ -273,20 +311,6 @@ class SentimentTracker:
         
         return sentiment, confidence, avg_value
 
-def load_config():
-    """Load config from config.yaml"""
-    with open('config.yaml', 'r') as f:
-        config = yaml.safe_load(f)
-    return (
-        config['system_prompt'],  
-        config['market_context_prompt'],  
-        config['model'],
-        config['field_descriptions']
-    )
-
-# Load config at module level
-SYSTEM_PROMPT, MARKET_CONTEXT_PROMPT, MODEL_NAME, FIELD_DESCRIPTIONS = load_config()
-
 class MarketAnalysis(BaseModel):
     __doc__ = f"""Analysis powered by {MODEL_NAME}"""
     summary: str = Field(..., description=FIELD_DESCRIPTIONS['summary'])
@@ -335,26 +359,7 @@ class AnalysisManager:
         except queue.Empty:
             return None
 
-class AwarenessConfig(BaseModel):
-    """Configuration for news awareness filtering"""
-    limit: int = Field(default=8, description="Number of news items to include")
-    relevance_threshold: float = Field(default=60.0, description="Minimum relevance score")
-    weights: Dict[str, float] = Field(
-        default={
-            "ticker": 1.0,
-            "name": 0.9,
-            "industry": 0.8,
-            "sector": 0.7
-        }
-    )
-
-class RefreshConfig(BaseModel):
-    """Configuration for all refresh rates and timing intervals"""
-    screen_fps: int = Field(default=4, ge=1, le=60, description="Screen refreshes per second")
-    data_update: int = Field(default=60, ge=10, description="Seconds between market data updates")
-    analysis_throttle: int = Field(default=60, ge=10, description="Minimum seconds between AI analysis")
-    scroll_interval: float = Field(default=1.0, ge=0.1, description="Seconds between auto-scrolls")
-    sentiment_retention: int = Field(default=7, ge=1, description="Days to keep sentiment history")
+# Main UI class
 
 class FinancialDashboard:
     DEFAULT_PERIOD = '1mo'
@@ -528,6 +533,20 @@ class FinancialDashboard:
                 self.update_queue.put(f"Error: {str(e)}")
                 time.sleep(5)  # Error backoff
 
+                if force_chart_update:
+                    # Store relative scroll position before resize
+                    if self.news_items:
+                        item_heights = [self.calculate_item_height(item, 
+                                last_size[0] - 4) for item in self.news_items]
+                        total_height = sum(item_heights)
+                        if total_height > 0:
+                            relative_scroll = self.news_scroll / len(self.news_items)
+                            
+                            # Recalculate with new dimensions and restore relative position
+                            new_item_heights = [self.calculate_item_height(item, 
+                                   current_size[0] - 4) for item in self.news_items]
+                            self.news_scroll = int(relative_scroll * len(self.news_items))
+
     def search(self, query: str) -> List[Dict]:
         """Search through data and return items in standard news format
         Searches:
@@ -613,8 +632,7 @@ class FinancialDashboard:
                 results.append({
                     'title': f"{ticker} - {data['name']}",
                     'summary': (f"Price: ${data['price']:.2f} ({data['change']:+.2f}%) | "
-                              f"Volume: {data['volume']:,} | "
-                              f"Cap: {self.format_market_cap(data['market_cap'])} | "
+                              f"Volume: {data['volume']:,}, Cap: {self.format_market_cap(data['market_cap'])} | "
                               f"{extra_info}"),
                     'source': 'Stocks',
                     'published': datetime.now().strftime('%a, %d %b %Y %H:%M:%S %z'),
@@ -640,15 +658,28 @@ class FinancialDashboard:
             return timestamp_str[:16]
 
     def log_api_interaction(self, request: dict, response: dict, error: str = None):
-        """Log API interactions to JSONL file"""
-        log_entry = {
-            "timestamp": datetime.now().isoformat(),
-            "request": request,
-            "response": response,
+        """Log API interactions to JSONL file with requests and responses on separate lines"""
+        timestamp = datetime.now().isoformat()
+        
+        # Log request
+        request_entry = {
+            "timestamp": timestamp,
+            "type": "request",
+            "content": request,
+        }
+        
+        # Log response or error
+        response_entry = {
+            "timestamp": timestamp,
+            "type": "response",
+            "content": response,
             "error": error
         }
+        
         with open('market_analysis.jsonl', 'a') as f:
-            json.dump(log_entry, f)
+            json.dump(request_entry, f)
+            f.write('\n')
+            json.dump(response_entry, f)
             f.write('\n')
 
     def get_market_analysis(self) -> Optional[MarketAnalysis]:
@@ -720,11 +751,8 @@ class FinancialDashboard:
                         market_context += "|------|--------|----------|----------|\n"
 
                         # Sample key points from history
-                        sample_indices = [0, -1]  # Just first and last points
-                        if len(hist) > 2:
-                            mid = len(hist) // 2
-                            sample_indices.insert(1, mid)
-                        
+                        sample_indices = sorted([0] + [i for i in range(len(hist)) if i % max(1, len(hist)//7) == 0 and i > 0 and i < len(hist)-1] + [len(hist)-1])
+
                         for idx in sample_indices:
                             row = hist.iloc[idx]
                             date = hist.index[idx]
@@ -760,7 +788,7 @@ class FinancialDashboard:
                 
                 # Use consolidated news item getter
                 items, _, _ = self.get_news_items()
-                filtered_news = items[:8] if self.search_mode else self.filter_news_for_context()
+                filtered_news = items[:16] if self.search_mode else self.filter_news_for_context()
 
                 # Process news items for context
                 for news in filtered_news:
@@ -881,69 +909,146 @@ class FinancialDashboard:
         )
 
     def calculate_item_height(self, item: Dict, width: int) -> int:
-        """Calculate display height needed for a news item based on content and terminal width"""
-        # Account for padding and borders
-        content_width = width - 4  # Adjust for panel borders and padding
+        """Calculate display height using Rich's measurement capabilities"""
+        from io import StringIO
+        from rich.console import Console
         
-        # Calculate lines needed for each component
-        timestamp = len(f"[{self.format_timestamp(item['published'])}] ")
-        title = len(item['title'])
+        measurement_console = Console(
+            file=StringIO(),
+            width=width - 4,  # Account for panel borders and padding
+            height=100,       # Arbitrary large height
+            color_system="auto"
+        )
+        
+        t_str = self.format_timestamp(item['published'])
+        title = item['title']
         
         content = (item.get('summary') or 
                   item.get('description') or 
                   item.get('content:encoded', ''))[:128]
         
-        source = len(f" - {item['source']}")
+        source = item.get('source', 'Unknown')
         
-        # Calculate wrapped lines (including partial lines)
-        timestamp_lines = (timestamp + content_width - 1) // content_width
-        title_lines = (title + content_width - 1) // content_width
-        content_lines = (len(content) + content_width - 1) // content_width
-        source_lines = (source + content_width - 1) // content_width
+        formatted_text = f"[yellow][{t_str}][/yellow] [bold]{title}[/bold] "
+        if content:
+            formatted_text += f"[dim]{content}[/dim]"
+        formatted_text += f" - [orange3]{source}[/orange3]\n"
         
-        # Add spacing line
-        return timestamp_lines + title_lines + content_lines + source_lines + 1
+        with measurement_console.capture() as capture:
+            measurement_console.print(formatted_text)
+        
+        captured_text = capture.get()
+        height = captured_text.count("\n") + 1
+        
+        return height + 1
 
-    def get_visible_window(self, items: List[Dict]) -> tuple[List[Dict], int, int]:
-        """Get visible items and scroll bounds based on actual content heights"""
+    def format_news_item(self, item: Dict) -> Text:
+        """Create a consistently formatted Text object for a news item"""
+        result = Text()
+        
+        t_str = self.format_timestamp(item['published'])
+        result.append(f"[{t_str}] ", style="yellow")
+        result.append(f"{item['title']} ", style="bold")
+        
+        # Safely handle None values before slicing
+        summary = item.get('summary') or ""
+        description = item.get('description') or ""
+        content_encoded = item.get('content:encoded', "") or ""
+        
+        content = (summary[:128] if summary else 
+                  description[:128] if description else 
+                  content_encoded[:128])
+        
+        if content:
+            result.append(f"{content}", style="dim")
+        
+        result.append(" - ")
+        result.append(f"{item.get('source', 'Unknown')}", style="orange3")
+        
+        return result
+
+    def handle_scrolling(self, items: List[Dict]) -> tuple[List[Dict], int, int]:
+        """Simplified universal scrolling handler"""
         if not items:
             return [], 0, 0
         
-        # Get available height for content
-        available_height = self.console.height - 6  # Account for borders and status
-        width = self.console.width - 4  # Account for panel borders
+        available_height = self.console.height - 6
+        panel_width = self.console.width - 4
         
-        # Calculate cumulative heights
-        item_heights = [self.calculate_item_height(item, width) for item in items]
-        cumulative_height = 0
-        visible_count = 0
+        # Maintain chronological order
+        working_items = (items if self.search_mode else 
+                        sorted(items, key=lambda x: x['published'], reverse=True))
         
-        # Find how many items fit
-        for height in item_heights[self.news_scroll:]:
-            if cumulative_height + height > available_height:
-                break
-            cumulative_height += height
-            visible_count += 1
+        total_items = len(working_items)
+        if total_items == 0:
+            return [], 0, 0
         
-        # Calculate max scroll position
-        total_items = len(items)
-        start = self.news_scroll
+        # Calculate item heights
+        item_heights = [self.calculate_item_height(item, panel_width) for item in working_items]
         
-        # Adjust scroll position based on mode
-        if self.scroll_mode == "infinite":
-            start = start % total_items
-        else:
-            # Find last valid start position that shows at least one item
-            max_start = total_items - 1
-            while max_start > 0:
-                test_height = item_heights[max_start]
-                if test_height <= available_height:
+        # If everything fits, show all items without scrolling
+        if sum(item_heights) <= available_height:
+            return working_items, 0, total_items
+        
+        # Keep scroll position in bounds with simple modulo
+        self.news_scroll = self.news_scroll % total_items
+        
+        # Handle auto-scrolling timing
+        current_time = time.time()
+        if current_time - self.last_scroll_time >= self.scroll_interval:
+            if self.scroll_mode == "infinite":
+                self.news_scroll = (self.news_scroll + 1) % total_items
+            elif self.scroll_mode == "pingpong":
+                next_pos = self.news_scroll + self.scroll_direction
+                if next_pos >= total_items or next_pos < 0:
+                    self.scroll_direction *= -1
+                    next_pos = self.news_scroll + self.scroll_direction
+                self.news_scroll = next_pos
+            self.last_scroll_time = current_time
+        
+        # Simply collect visible items starting from scroll position
+        visible_items = []
+        current_height = 0
+        
+        # For static mode, just show items from current position until we run out of space
+        if self.scroll_mode == "static":
+            idx = self.news_scroll
+            while idx < total_items and (current_height < available_height or not visible_items):
+                item_height = item_heights[idx]
+                if current_height + item_height <= available_height or not visible_items:
+                    visible_items.append(working_items[idx])
+                    current_height += item_height
+                    idx += 1
+                else:
                     break
-                max_start -= 1
-            start = min(max(0, start), max_start)
+        # For infinite/pingpong, allow wrapping around to beginning
+        else:
+            items_seen = 0
+            idx = self.news_scroll
+            while items_seen < total_items and (current_height < available_height or not visible_items):
+                current_idx = idx % total_items
+                item_height = item_heights[current_idx]
+                
+                if current_height + item_height <= available_height or not visible_items:
+                    visible_items.append(working_items[current_idx])
+                    current_height += item_height
+                else:
+                    break
+                
+                idx = (idx + 1) % total_items
+                items_seen += 1
         
-        end = min(start + visible_count, total_items)
-        return items[start:end], start, end
+        # Calculate simple start and end indices
+        start_idx = self.news_scroll
+        end_idx = start_idx + len(visible_items)
+        if end_idx > total_items:
+            end_idx = total_items
+        
+        return visible_items, start_idx, end_idx
+
+    def get_visible_window(self, items: List[Dict]) -> tuple[List[Dict], int, int]:
+        """Wrapper for unified scroll handler"""
+        return self.handle_scrolling(items)
 
     def generate_layout(self) -> Layout:
         """Generate the current layout for Live rendering."""
@@ -975,30 +1080,17 @@ class FinancialDashboard:
         )
 
         # News panel with consolidated state management
-        news_text = Text()
+        news_content = Group()
         items, panel_title, border_style = self.get_news_items()
         visible_items, start, end = self.get_visible_window(items)
 
-        # Display items with standard format
-        for i, item in enumerate(visible_items, start + 1):
-            t_str = self.format_timestamp(item['published'])
-            news_text.append(f"[{t_str}] ", style="yellow")
-            news_text.append(f"{item['title']} ", style="bold")
-            
-            content = (item.get('summary')[:128] or 
-                      item.get('description')[:128] or 
-                      item.get('content:encoded')[:128])
-            
-            if content:
-                news_text.append(f"{content}", style="dim")
-            news_text.append(" - ")
-            news_text.append(f"{item['source']}\n", style="orange3")
-            news_text.append("")
+        for item in visible_items:
+            news_content.renderables.append(self.format_news_item(item))
 
         base_layout["news"].update(Panel(
-            news_text,
+            news_content,
             title=panel_title,
-            subtitle=f"{self.SCROLL_INDICATORS[self.scroll_mode]} | {start+1}-{len(items)}",
+            subtitle=f"{self.SCROLL_INDICATORS[self.scroll_mode]} | {start+1}-{end} of {len(items)}",
             border_style=border_style
         ))
 
@@ -1223,9 +1315,12 @@ class FinancialDashboard:
             if macd:
                 self.charts["macd"][ticker] = macd['chart']
 
-    def filter_news_for_context(self, limit: int = 8) -> List[Dict]:
+    def filter_news_for_context(self) -> List[Dict]:
         """Filter news items for AI CONTEXT only"""
-        # Get awareness items first (unchanged)
+        # Use the limit from config
+        limit = self.awareness_config.limit
+        
+        # Rest of the method remains the same
         awareness_items = []
         if self.news_context_mode == NewsContextMode.RECENT:
             awareness_items = [{**item, 'context': "Recent News:"} for item in sorted(self.news_items, key=lambda x: x['published'], reverse=True)[:limit]]
@@ -1288,40 +1383,6 @@ class FinancialDashboard:
             return filtered
 
         return awareness_items[:limit]
-
-    def get_scroll_bounds(self) -> tuple[int, int]:
-        """Get current items_per_page and max_scroll"""
-        items_per_page = max(5, self.console.height // 4)
-        total_items = len(self.search_results if self.search_mode else self.news_items)
-        max_scroll = max(0, total_items - items_per_page)
-        return items_per_page, max_scroll
-
-    def handle_auto_scroll(self, total_items: int, scroll_pos: int) -> int:
-        """Handle automatic scrolling with validated bounds"""
-        current_time = time.time()
-        if current_time - self.last_scroll_time < self.scroll_interval:
-            return scroll_pos
-        
-        # Update last scroll time when we actually scroll
-        self.last_scroll_time = current_time
-        
-        _, max_scroll = self.get_scroll_bounds()
-        
-        if self.scroll_mode == "static":
-            return scroll_pos  # Only manual scrolling
-        elif self.scroll_mode == "infinite":
-            # Keep within bounds while maintaining sort order
-            return min(scroll_pos + 1, max_scroll)
-        elif self.scroll_mode == "pingpong":
-            new_scroll = scroll_pos + self.scroll_direction
-            if new_scroll > max_scroll:
-                self.scroll_direction = -1
-                return max_scroll
-            elif new_scroll < 0:
-                self.scroll_direction = 1
-                return 0
-            return new_scroll
-        return scroll_pos
 
     def create_panel_with_loading(self, content: Any, title: str, state: LoadingState, 
                                 loading_message: str = "", **panel_kwargs) -> Panel:
@@ -1443,20 +1504,26 @@ class FinancialDashboard:
                             current_idx = self.CHART_TYPES.index(self.current_chart_type)
                             self.current_chart_type = self.CHART_TYPES[(current_idx + 1) % len(self.CHART_TYPES)]
                         
-                        #elif key_char == 'i':
-                        #    self.input_mode = True
-                        #    self.command_str = ""
                         elif key_char == 's':
                             # Start input mode with "s " prefilled for search.
                             self.input_mode = True
                             self.command_str = "s "
-                        elif key_char == 'm':  # New command to cycle scroll modes
+                        elif key_char == 'm':  # Cycle scroll modes
                             current_idx = self.SCROLL_MODES.index(self.scroll_mode)
                             self.scroll_mode = self.SCROLL_MODES[(current_idx + 1) % len(self.SCROLL_MODES)]
                         elif key_char == ' ' and self.scroll_mode == "static":
-                            # In static mode, space advances one item
-                            items_length = len(self.search_results if self.search_mode else self.news_items)
-                            self.news_scroll = (self.news_scroll + 1) % items_length
+                            # Spacebar scrolls down by a page in static mode
+                            next_idx = min(self.news_scroll + 1, len(self.news_items) - 1)
+                            if next_idx > self.news_scroll:
+                                self.news_scroll = next_idx
+                            else:
+                                self.news_scroll = 0
+                        elif key_char == 'j' and self.scroll_mode == "static":
+                            # j key scrolls down by one item in static mode
+                            self.news_scroll = min(self.news_scroll + 1, len(self.news_items) - 1)
+                        elif key_char == 'k' and self.scroll_mode == "static":
+                            # k key scrolls up by one item in static mode
+                            self.news_scroll = max(0, self.news_scroll - 1)
                         elif key_char == 'p':
                             current_idx = self.AVAILABLE_PERIODS.index(self.current_period)
                             self.current_period = self.AVAILABLE_PERIODS[(current_idx + 1) % len(self.AVAILABLE_PERIODS)]
@@ -1471,7 +1538,7 @@ class FinancialDashboard:
 
                 # Use single scroll handler with total items only
                 items_length = len(self.search_results if self.search_mode else self.news_items)
-                self.news_scroll = self.handle_auto_scroll(items_length, self.news_scroll)
+                self.news_scroll = self.get_visible_window(self.search_results if self.search_mode else self.news_items)[1]
 
                 # Check for analysis results
                 result = self.analysis_manager.check_results()

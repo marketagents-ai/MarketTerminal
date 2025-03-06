@@ -1,7 +1,6 @@
 rss_feeds:
   - https://www.rnz.co.nz/rss/business.xml
   - https://www.rnz.co.nz/rss/world.xml
-  - https://www.rnz.co.nz/rss/in-depth.xml
   - https://feeds.bloomberg.com/markets/news.rss
   - https://nvidianews.nvidia.com/releases.xml
   - http://feeds.reuters.com/reuters/businessNews
@@ -69,6 +68,7 @@ field_descriptions:
     - Traditional indicators: MA convergence (20/50/200), RSI/MACD readings
     - Volume analysis: Standard + dark pool + social engagement correlation
     - Pattern formations with sentiment overlay
+    - National currency relationships and political discourse
     - Support/resistance levels with social consensus strength
     - Narrative-technical alignment scores
     Each with specific values, interpretations, and sentiment correlation"
@@ -106,10 +106,6 @@ field_descriptions:
     - Long-term: 6+ months (fundamental-narrative convergence)
     Include both technical and social cycle alignment requirements"
 
-  timeline_detection: "Detect the polarity of the timeline, dark or ok
-    - Dark: 0-49
-    - Ok: 50-99
-    This is contingent on the current political discourse, market sentiment and the general vibe from the news cycle"
 
 
 system_prompt: |
@@ -208,13 +204,13 @@ market_context_prompt: |
 
 refresh_rates:
   screen_fps: 24
-  data_update: 120
+  data_update: 10
   analysis_throttle: 30
   scroll_interval: 2.0
   sentiment_retention: 14
 
 awareness:
-  limit: 16
+  limit: 24
   relevance_threshold: 60.0
   weights:
     ticker: 1.0

@@ -1,0 +1,6 @@
+
+- Add social media sources (Delphi as embedded twitter agent WIP, just ran out of calls again for the X api again for the month)
+- Integrate MA MinferenceLite stack
+    - this involves thinking about how to use the `orchestrator` to call for each ticker etc
+- Add concurrent/async analysis of multiple stocks and currencies rather than just the current focused one
+- Test on Linux and Mac to ensure the input method is compatible (as it was developed on Windows)* pretty sure 'msvcrt' dependancy will break other platforms
